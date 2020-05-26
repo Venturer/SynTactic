@@ -35,11 +35,14 @@ def serial_ports():
     """
     if sys.platform.startswith('win'):
         ports = ['COM%s' % (i + 1) for i in range(256)]
+
     elif sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
         # this excludes your current terminal "/dev/tty"
         ports = glob.glob('/dev/tty[A-Za-z]*')
+
     elif sys.platform.startswith('darwin'):
         ports = glob.glob('/dev/tty.*')
+
     else:
         raise EnvironmentError('Unsupported platform')
 
@@ -51,6 +54,7 @@ def serial_ports():
             result.append(port)
         except (OSError, serial.SerialException):
             pass
+
     return result
 
 
@@ -96,19 +100,27 @@ class TerminalWidget(QWidget):
 
     text_update = QtCore.pyqtSignal(str)
 
-
     def __init__(self, *args):
+
         QWidget.__init__(self, *args)
-        self.textbox = TextBox()  # Create custom text box
+
+        # Create custom text box
+        self.textbox = TextBox()
+
         font = QtGui.QFont()
-        font.setFamily("Courier New")  # Monospaced font
+        font.setFamily("Source Code Pro")  # Monospaced font
         font.setPointSize(10)
         self.textbox.setFont(font)
+
         layout = QVBoxLayout()
         layout.addWidget(self.textbox)
         self.setLayout(layout)
+
         self.resize(WIN_WIDTH, WIN_HEIGHT)  # Set window size
-        self.text_update.connect(self.append_text)  # Connect text update to handler
+
+        # Connect text update to handler
+        self.text_update.connect(self.append_text)
+
         sys.stdout = self  # Redirect sys.stdout to self
 
     def connect(self, port, baud):
@@ -116,8 +128,8 @@ class TerminalWidget(QWidget):
 
         portname, baudrate = port, baud
 
-        self.serth = SerialThread(portname, baudrate)  # Start serial thread
-        self.serth.start()
+        self.serial_thread = SerialThread(portname, baudrate)  # Start serial thread
+        self.serial_thread.start()
 
     def write(self, text):  # Handle sys.stdout.write: update display
         self.text_update.emit(text)  # Send signal to synchronise call with main thread
@@ -131,7 +143,7 @@ class TerminalWidget(QWidget):
 
         s = str(text)
         while s:
-            head, sep, s = s.partition("\n")  # Split line at LF
+            head, sep, s = s.partition("\r\n")  # Split line at LF
             cur.insertText(head)  # Insert text at cursor
             if sep:  # New line if LF
                 cur.insertBlock()
@@ -147,35 +159,43 @@ class TerminalWidget(QWidget):
 
         if len(s) > 0 and s[0] == PASTE_CHAR:  # Detect ctrl-V paste
             cb = QApplication.clipboard()
-            self.serth.ser_out(cb.text())  # Send paste string to serial driver
+            self.serial_thread.ser_out(cb.text())  # Send paste string to serial driver
 
         else:
-            self.serth.ser_out(s)  # ..or send keystroke
+            self.serial_thread.ser_out(s)  # ..or send keystroke
 
     def send_text(self, text):
 
-        try:
-            self.serth.ser_out(text)  # ..or send keystroke
-        except AttributeError:
+        if self.is_connected():
+            self.serial_thread.ser_out(text)
+        else:
             print('Disconnected!')
+
+    def is_connected(self):
+
+        try:
+            running = self.serial_thread.isRunning()
+            return True if running else False
+        except AttributeError:
+            return False
 
     def closeEvent(self, event):  # Window closing
         self.close_serial_port_and_wait()
 
     def close_serial_port_and_wait(self):
-
         """Close the serial port and wait for the serial thread to terminate.
 
             No action if thread does not exist.
             """
 
         try:
-            self.serth.running = False  # Wait until serial thread terminates
-            self.serth.wait()
+            self.serial_thread.running = False  # Wait until serial thread terminates
+            self.serial_thread.wait()
 
         except AttributeError:
             # Pass quietly if thread does not exist
             pass
+
 
 class SerialThread(QtCore.QThread):
     """Thread to handle incoming and outgoing serial data."""

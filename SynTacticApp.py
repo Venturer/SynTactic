@@ -4,7 +4,7 @@
 
     An IDE for MicroPython.
 
-    A Qt5 based program template for Python3.
+    A Qt5 based program for Python >= 3.8
     QScintilla is used for editing.
 
     """
@@ -24,13 +24,14 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# Version 1.0, June 2018
+# Version 0.1, May 2020
 
 # standard imports
 from __future__ import annotations
 
 import sys
 import os.path
+from typing import *
 
 # PyQt interface imports, Qt5
 from PyQt5.QtWidgets import *
@@ -39,41 +40,33 @@ from PyQt5.QtGui import *
 
 # project imports
 from pythoneditor import PythonEditor
-from terminal import TerminalWidget, serial_ports
+from terminal import TerminalWidget, serial_ports, hexdump
 
 TITLE = 'SynTactic'
-
-
-def waiting_cursor(func):
-    """Decorator to set waiting cursor while method is running."""
-
-    def new_function(self):
-        QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
-        self.repaint()
-        try:
-            func(self)
-        except Exception as e:
-            raise e
-        finally:
-            QApplication.restoreOverrideCursor()
-            self.repaint()
-
-    return new_function
 
 
 class MainApp(QMainWindow):
     """Main Qt5 Window."""
 
+    callback = None
+    captured_text = ''
+    ending = ''
+
     def __init__(self):
         """MainApp Constructor."""
 
-        # ToDo: Save As untitled.py files
+        # ToDo: SaveAs for untitled.py files
+        # ToDo: add SaveAs to menu
+        # ToDo: add Upload
+        # ToDo: sort out auto-indent in editor
 
         # call inherited init
         super().__init__()
 
         # Load the GUI definition
         self.init_ui()
+
+        self.terminal.text_update.connect(self.characters_from_target)
 
         # Create an object to save and restore settings
         self.settings = QSettings('G4AUC', 'SynTactic')
@@ -91,6 +84,11 @@ class MainApp(QMainWindow):
         self.splitter_side_pos = self.settings.value('splitter_side_pos', 300)
         self.splitter_side.moveSplitter(int(self.splitter_side_pos), 1)
 
+        last_port = self.settings.value('com_port', 'COM3')
+        if (index := self.port_combo.findText(last_port)) != -1:
+            self.port_combo.setCurrentIndex(index)
+
+    # noinspection PyAttributeOutsideInit
     def init_ui(self):
         """Initialises the user interface."""
 
@@ -106,7 +104,10 @@ class MainApp(QMainWindow):
         usb_icon = QIcon('USB_64x.png')
         connect_icon = QIcon('ConnectPlugged_64x.png')
         disconnect_icon = QIcon('ConnectUnplugged_64x.png')
+        run_icon = QIcon('Run_blue_64x.png')
+        upload_icon = QIcon('UploadFile_64x.png')
         exit_icon = QIcon('Exit_64x.png')
+
         self.py_icon = QIcon('py.ico')  # Icon to add to tabs
 
         # Create frame and layout
@@ -152,12 +153,13 @@ class MainApp(QMainWindow):
 
         side_layout.addWidget(QLabel('Target Files:'))
 
-        get_target_files_button = QPushButton(get_icon, 'Get Files')
+        get_target_files_button = QPushButton(get_icon, 'List Files')
         get_target_files_button.clicked.connect(self.on_get_target_files_button_clicked)
         side_layout.addWidget(get_target_files_button)
 
         self.target_files = QListWidget()
         self.target_files.setMinimumWidth(100)
+        self.target_files.itemDoubleClicked.connect(self.on_target_files_itemDoubleClicked)
         side_layout.addWidget(self.target_files)
 
         self.splitter_side.addWidget(side_frame)
@@ -176,27 +178,37 @@ class MainApp(QMainWindow):
         self.splitter_main.addWidget(main_frame)
 
         # Top Button layout
-        self.topButtonLayout = QHBoxLayout()
-        main_layout.addLayout(self.topButtonLayout)
+        top_button_layout = QHBoxLayout()
+        main_layout.addLayout(top_button_layout)
 
         # Place Action buttons
         new_button = QPushButton(new_icon, "New")
         new_button.clicked.connect(self.on_new_clicked)
-        self.topButtonLayout.addWidget(new_button)
+        top_button_layout.addWidget(new_button)
 
         self.open_button = QPushButton(open_icon, "Open")
         self.open_button.clicked.connect(self.on_open_clicked)
-        self.topButtonLayout.addWidget(self.open_button)
+        top_button_layout.addWidget(self.open_button)
 
         self.save_button = QPushButton(save_icon, "Save")
         self.save_button.clicked.connect(self.on_save_clicked)
-        self.topButtonLayout.addWidget(self.save_button)
+        top_button_layout.addWidget(self.save_button)
 
-        self.topButtonLayout.addStretch()
+        top_button_layout.addSpacing(16)
+
+        run_button = QPushButton(run_icon, "Run")
+        run_button.clicked.connect(self.on_run_button_clicked)
+        top_button_layout.addWidget(run_button)
+
+        upload_button = QPushButton(upload_icon, "Upload")
+        upload_button.clicked.connect(self.on_new_clicked)
+        top_button_layout.addWidget(upload_button)
+
+        top_button_layout.addStretch()
 
         exit_button = QPushButton(exit_icon, "Exit")
         exit_button.clicked.connect(QApplication.instance().quit)
-        self.topButtonLayout.addWidget(exit_button)
+        top_button_layout.addWidget(exit_button)
 
         # Edit layout
         self.edit_layout = QVBoxLayout()
@@ -219,35 +231,104 @@ class MainApp(QMainWindow):
 
     def setup_file_menu(self):
 
-        fileMenu = QMenu("&File", self)
-        self.menuBar().addMenu(fileMenu)
+        file_menu = QMenu("&File", self)
+        self.menuBar().addMenu(file_menu)
 
-        fileMenu.addAction("&New...", self.on_new_clicked, "Ctrl+N")
-        fileMenu.addAction("&Open...", self.on_open_clicked, "Ctrl+O")
-        fileMenu.addAction("&Save...", self.on_save_clicked, "Ctrl+S")
-        fileMenu.addAction("E&xit", QApplication.instance().quit, "Ctrl+Q")
+        file_menu.addAction("&New...", self.on_new_clicked, "Ctrl+N")
+        file_menu.addAction("&Open...", self.on_open_clicked, "Ctrl+O")
+        file_menu.addAction("&Save...", self.on_save_clicked, "Ctrl+S")
+        file_menu.addAction("E&xit", QApplication.instance().quit, "Ctrl+Q")
 
     def setup_help_menu(self):
 
-        helpMenu = QMenu("&Help", self)
-        self.menuBar().addMenu(helpMenu)
+        help_menu = QMenu("&Help", self)
+        self.menuBar().addMenu(help_menu)
 
-        helpMenu.addAction("&About", self.about)
-        helpMenu.addAction("About &Qt", QApplication.instance().aboutQt)
+        help_menu.addAction("&About", self.about)
+        help_menu.addAction("About &Qt", QApplication.instance().aboutQt)
 
     def about(self):
         QMessageBox.about(self, "About SynTactic",
                 "<p>A <b>Python Editor with Syntax Highlighting</b> for <b>MicroPython</b> by G4AUC.")
 
+    def callback_with_line_from_target(self, callback: Optional(Any) = None, ending='\n'):
+        """Sets a callback to get the next line sent by the target. Calls
+            `callback` with the line text when available.
+
+            Sets self.callback which is then used by the slot method attached to
+            the signal which emits the line text. That method sends the text on
+            to the callback method/function."""
+
+        self.callback, self.ending = callback, ending
+        self.captured_text = ''
+
+    @pyqtSlot(str)
+    def characters_from_target(self, text):
+        """Slot to receive characters from the terminal."""
+
+        self.captured_text += text
+
+        # print('"', hexdump(self.captured_text), '"', file=sys.stderr)
+
+        if self.callback and self.captured_text.endswith(self.ending):
+            self.callback(self.captured_text)
+
+            # callback should probably do this as well to avoid being
+            # potentially called with next line as well
+            self.callback = None
+
+    @pyqtSlot(QListWidgetItem)
+    def on_target_files_itemDoubleClicked(self, item: QListWidgetItem):
+        """Slot triggered when the list item is double clicked.
+            """
+
+        # print(item.text())
+        send_command = f"exec(open('./{item.text()}').read(),globals())\r"
+        self.terminal.send_text(send_command)
+
     @pyqtSlot()
     def on_get_target_files_button_clicked(self):
         """Slot triggered when the button is clicked.
             """
-        self.terminal.captured_text = ''
-        self.terminal.send_text('import os; os.listdir()\r')
 
-        print('Cap:', self.terminal.captured_text)
+        if self.terminal.is_connected():
+            self.callback_with_line_from_target(self.get_target_files_callback, ending='>>> ')
+            self.terminal.send_text('import os; os.listdir()\r')
+        else:
+            print('Disconnected!')
 
+    def get_target_files_callback(self, text: str):
+        """Called back when the terminal text resulting from
+            the on_get_target_files_button_clicked method
+            is available."""
+
+        self.callback = None
+
+        text_lines = text.split('\r\n')  # split into lines
+        files_line = text_lines[1]  # the files list is on this line
+
+        # Convert text in files_line to a list of file names
+        target_files: List[str] = [f.strip("[]'") for f in files_line.split("', '")]
+
+        self.target_files.clear()
+        self.target_files.addItems(target_files)
+
+        # print('Files: ', target_files, sep='', file=sys.stderr)
+
+    @pyqtSlot()
+    def on_run_button_clicked(self):
+        """Slot triggered when the button is clicked.
+
+            Runs the script in the current editor page on the target MCU.
+            The script is not uploaded to the target file system.
+            """
+
+        editor = self.tab_widget.currentWidget()
+        if editor:
+            self.save_file(editor)
+
+            # Use paste REPL
+            self.terminal.send_text(f'\x05{editor.text()}\x04\r')
 
     @pyqtSlot()
     def on_port_connect_button_clicked(self):
@@ -260,9 +341,11 @@ class MainApp(QMainWindow):
 
             try:
                 port = self.port_combo.currentText()
+                self.settings.setValue('com_port', port)
                 self.terminal.connect(port, 115200)
+                self.terminal.send_text('\r')
             except Exception as e:
-                print('Could not connect to:', port, '!')
+                print('Could not connect to: ', port, '!', sep='')
                 print(e)
 
     @pyqtSlot()
@@ -316,15 +399,17 @@ class MainApp(QMainWindow):
         """Slot triggered when the button is clicked.
             """
 
+        dir = self.settings.value('open_file_dir', '.')
         filename, _ = QFileDialog.getOpenFileName(self,
-                        "Open File", ".", "Python Files (*.py *.pyw *.pyi )")
+                        "Open File", dir, "Python Files (*.py *.pyw *.pyi )")
 
         if filename:
             editor = PythonEditor()
             editor.filename = filename
 
-            _, name = os.path.split(filename)
+            dir, name = os.path.split(filename)
             self.tab_widget.addTab(editor, self.py_icon, name)
+            self.settings.setValue('open_file_dir', dir)
 
             self.tab_widget.setCurrentWidget(editor)
 
@@ -388,12 +473,13 @@ class MainApp(QMainWindow):
     @staticmethod
     def save_file(editor: PythonEditor):
         """Save file from the `editor` as `editor`.filename."""
+        
+        if editor:
+            # Save file
+            with open(editor.filename, 'w') as outfile:
+                outfile.write(editor.text())
 
-        # Save file
-        with open(editor.filename, 'w') as outfile:
-            outfile.write(editor.text())
-
-        editor.setModified(False)
+            editor.setModified(False)
 
     def closeEvent(self, event):
         """Override inherited QMainWindow closeEvent.
