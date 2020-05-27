@@ -104,6 +104,8 @@ class TerminalWidget(QWidget):
 
         QWidget.__init__(self, *args)
 
+        self.setContentsMargins(1, 1, 1, 1)
+
         # Create custom text box
         self.textbox = TextBox()
 
