@@ -24,6 +24,8 @@ class PythonEditor(QsciScintilla):
 
         self.filename = 'untitled.py'
 
+        self.setIndentationWidth(4)
+
         # Set the default font
         font = QFont()
         font.setFamily(FONT_NAME)

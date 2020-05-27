@@ -29,14 +29,15 @@
 # standard imports
 from __future__ import annotations
 
-import sys
 import os.path
+import sys
 from typing import *
+from time import sleep
 
-# PyQt interface imports, Qt5
-from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
+# PyQt interface imports, Qt5
+from PyQt5.QtWidgets import *
 
 # project imports
 from pythoneditor import PythonEditor
@@ -51,13 +52,12 @@ class MainApp(QMainWindow):
     callback = None
     captured_text = ''
     ending = ''
+    downloaded_filename = ''
 
     def __init__(self):
         """MainApp Constructor."""
 
-        # ToDo: SaveAs for untitled.py files
         # ToDo: add SaveAs to menu
-        # ToDo: add Upload
         # ToDo: sort out auto-indent in editor
 
         # call inherited init
@@ -66,7 +66,7 @@ class MainApp(QMainWindow):
         # Load the GUI definition
         self.init_ui()
 
-        self.terminal.text_update.connect(self.characters_from_target)
+        self.terminal.text_update.connect(self.receive_characters_from_target)
 
         # Create an object to save and restore settings
         self.settings = QSettings('G4AUC', 'SynTactic')
@@ -108,6 +108,7 @@ class MainApp(QMainWindow):
         upload_icon = QIcon('UploadFile_64x.png')
         exit_icon = QIcon('Exit_64x.png')
 
+        self.micropython_icon = QIcon('MicroPython_64x.png')
         self.py_icon = QIcon('py.ico')  # Icon to add to tabs
 
         # Create frame and layout
@@ -162,6 +163,10 @@ class MainApp(QMainWindow):
         self.target_files.itemDoubleClicked.connect(self.on_target_files_itemDoubleClicked)
         side_layout.addWidget(self.target_files)
 
+        run_target_button = QPushButton(run_icon, 'Run File')
+        run_target_button.clicked.connect(self.on_run_target_button_clicked)
+        side_layout.addWidget(run_target_button)
+
         self.splitter_side.addWidget(side_frame)
 
         # Main frame
@@ -201,7 +206,7 @@ class MainApp(QMainWindow):
         top_button_layout.addWidget(run_button)
 
         upload_button = QPushButton(upload_icon, "Upload")
-        upload_button.clicked.connect(self.on_new_clicked)
+        upload_button.clicked.connect(self.on_upload_button_clicked)
         top_button_layout.addWidget(upload_button)
 
         top_button_layout.addStretch()
@@ -249,42 +254,100 @@ class MainApp(QMainWindow):
 
     def about(self):
         QMessageBox.about(self, "About SynTactic",
-                "<p>A <b>Python Editor with Syntax Highlighting</b> for <b>MicroPython</b> by G4AUC.")
+                          "<p>A <b>Python Editor with Syntax Highlighting</b> for <b>MicroPython</b> by G4AUC.")
 
-    def callback_with_line_from_target(self, callback: Optional(Any) = None, ending='\n'):
-        """Sets a callback to get the next line sent by the target. Calls
-            `callback` with the line text when available.
+    def callback_with_text_from_target(self, callback: Optional(Any) = None, ending: str = '\n'):
+        """Sets self.callback and self.ending which are then used by the slot method attached to
+            the signal which emits the line text. The current captured text is cleared.
 
-            Sets self.callback which is then used by the slot method attached to
-            the signal which emits the line text. That method sends the text on
-            to the callback method/function."""
+            That method sends the text on to the callback method/function when available.
+            """
 
-        self.callback, self.ending = callback, ending
         self.captured_text = ''
+        self.callback, self.ending = callback, ending
 
-    @pyqtSlot(str)
-    def characters_from_target(self, text):
-        """Slot to receive characters from the terminal."""
+    def receive_characters_from_target(self, text):
+        """Slot to receive characters from the target via the terminal up to
+            but not including the contents of `self.ending`.
 
-        self.captured_text += text
+            The callback (in `self.callback`) is called with the `text`,
+            when available.
+            """
 
-        # print('"', hexdump(self.captured_text), '"', file=sys.stderr)
+        s = str(text)
+        self.captured_text += s
 
-        if self.callback and self.captured_text.endswith(self.ending):
-            self.callback(self.captured_text)
+        if self.callback:
+            joined = ''.join(self.captured_text.splitlines(keepends=True))
+            if (inx := joined.find(self.ending)) != -1:
+                self.callback(j := joined[:inx])
 
-            # callback should probably do this as well to avoid being
-            # potentially called with next line as well
-            self.callback = None
+                # callback should probably do this as well to avoid being
+                # potentially called with next line as well
+                self.callback = None
 
     @pyqtSlot(QListWidgetItem)
     def on_target_files_itemDoubleClicked(self, item: QListWidgetItem):
         """Slot triggered when the list item is double clicked.
             """
+        if item:
+            self.callback_with_text_from_target(self.target_files_itemDoubleClicked_callback,
+                                                ending='&end')
+            self.downloaded_filename = item.text()
 
-        # print(item.text())
-        send_command = f"exec(open('./{item.text()}').read(),globals())\r"
-        self.terminal.send_text(send_command)
+            send_command = f"exec(\"with open('./{item.text()}','r') as f:" \
+                           f" [print(l) for l in f.read().splitlines()]; print(' &''end')\", globals())"
+
+            self.terminal.send_text(f"{send_command}\r")
+
+    def target_files_itemDoubleClicked_callback(self, text):
+        """"""
+        self.callback = None
+
+        lines = [line for line in text.splitlines()]
+
+        editor = self.on_new_clicked()
+        editor.filename = f"[{self.downloaded_filename}]"
+        inx = self.tab_widget.indexOf(self.tab_widget.currentWidget())
+        self.tab_widget.setTabText(inx, editor.filename)
+        self.tab_widget.setTabIcon(inx, self.micropython_icon)
+        editor.append(chr(10).join(lines[1:]))
+
+    @pyqtSlot()
+    def on_run_target_button_clicked(self):
+        """Slot triggered when button clicked.
+            """
+
+        item = self.target_files.currentItem()
+
+        if item:
+            send_command = f"exec(open('./{item.text()}').read(),globals())\r"
+            self.terminal.send_text(send_command)
+
+    @pyqtSlot()
+    def on_upload_button_clicked(self):
+        """Slot triggered when the button is clicked.
+            """
+
+        if editor := self.tab_widget.currentWidget():
+            content = editor.text()
+            dir, filename = os.path.split(editor.filename)
+
+            cont_lines = content.splitlines(keepends=True)
+            for i, c_line in enumerate(cont_lines):
+                if i==0:
+                    send_command = f"__c_ =  '''{c_line}'''\r\n"
+                    self.terminal.send_text(f"\x05{send_command}\x04")
+                    sleep(0.02)
+                else:
+                    send_command = f"__c_ +=  '''{c_line}'''\r\n"
+                    self.terminal.send_text(f"\x05{send_command}\x04")
+                    sleep(0.02)
+
+            send_command = f"exec(\"with open('./{filename}', 'w') as f: " \
+                           f"[f.write(c) for c in __c_.splitlines(keepends=True)]\", globals())\r"
+            self.terminal.send_text(f"\x05{send_command}\x04")
+            sleep(0.02)
 
     @pyqtSlot()
     def on_get_target_files_button_clicked(self):
@@ -292,19 +355,19 @@ class MainApp(QMainWindow):
             """
 
         if self.terminal.is_connected():
-            self.callback_with_line_from_target(self.get_target_files_callback, ending='>>> ')
+            self.callback_with_text_from_target(self.get_target_files_callback, ending='>>> ')
             self.terminal.send_text('import os; os.listdir()\r')
         else:
             print('Disconnected!')
 
-    def get_target_files_callback(self, text: str):
+    def get_target_files_callback(self, text):
         """Called back when the terminal text resulting from
             the on_get_target_files_button_clicked method
             is available."""
 
         self.callback = None
 
-        text_lines = text.split('\r\n')  # split into lines
+        text_lines = text.splitlines()  # split into lines
         files_line = text_lines[1]  # the files list is on this line
 
         # Convert text in files_line to a list of file names
@@ -312,8 +375,6 @@ class MainApp(QMainWindow):
 
         self.target_files.clear()
         self.target_files.addItems(target_files)
-
-        # print('Files: ', target_files, sep='', file=sys.stderr)
 
     @pyqtSlot()
     def on_run_button_clicked(self):
@@ -381,7 +442,6 @@ class MainApp(QMainWindow):
 
             Saves the new positions."""
 
-
         self.settings.setValue('splitter_main_pos', pos)
 
     @pyqtSlot()
@@ -394,6 +454,8 @@ class MainApp(QMainWindow):
 
         self.tab_widget.setCurrentWidget(editor)
 
+        return editor
+
     @pyqtSlot()
     def on_open_clicked(self):
         """Slot triggered when the button is clicked.
@@ -401,7 +463,7 @@ class MainApp(QMainWindow):
 
         dir = self.settings.value('open_file_dir', '.')
         filename, _ = QFileDialog.getOpenFileName(self,
-                        "Open File", dir, "Python Files (*.py *.pyw *.pyi )")
+                                                  "Open File", dir, "Python Files (*.py *.pyw *.pyi )")
 
         if filename:
             editor = PythonEditor()
@@ -415,7 +477,7 @@ class MainApp(QMainWindow):
 
             # Load py file into the editor
             with open(filename, 'r') as infile:
-                editor.setText(infile.read())
+                editor.setText(r := infile.read())
 
             editor.setModified(False)
 
@@ -448,9 +510,9 @@ class MainApp(QMainWindow):
                                          QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
             if reply == QMessageBox.Yes:
                 file_name, _ = QFileDialog.getSaveFileName(self,
-                                          "Save Source File",
-                                          editor.filename,
-                                          "Python Files (*.py *.pyw, *.pyi)")
+                                                           "Save Source File",
+                                                           editor.filename,
+                                                           "Python Files (*.py *.pyw, *.pyi)")
                 if file_name:
                     editor.filename = file_name
                     self.save_file(editor)
@@ -473,7 +535,7 @@ class MainApp(QMainWindow):
     @staticmethod
     def save_file(editor: PythonEditor):
         """Save file from the `editor` as `editor`.filename."""
-        
+
         if editor:
             # Save file
             with open(editor.filename, 'w') as outfile:
@@ -534,5 +596,3 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     mainWindow = MainApp()
     sys.exit(app.exec_())
-
-
