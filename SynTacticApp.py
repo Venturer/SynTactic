@@ -54,9 +54,6 @@ class MainApp(QMainWindow):
     ending = ''
     downloaded_filename = ''
 
-
-    # ToDo: Run and Upload saves the file first
-
     def __init__(self, *args, **kwargs):
         super(MainApp, self).__init__(*args, **kwargs)
 
@@ -293,7 +290,7 @@ class MainApp(QMainWindow):
 
     def receive_characters_from_target(self, text):
         """Slot to receive characters from the target via the terminal up to
-            but not including the contents of `self.ending`.
+            (but not including) the contents of `self.ending`.
 
             The callback (in `self.callback`) is called back with
             the captured text, when available.
@@ -355,7 +352,7 @@ class MainApp(QMainWindow):
     def on_delete_file_button_clicked(self):
         """Slot triggered when button clicked.
 
-            ToDo: Not yet finished.
+            Delete the selected file on the target MCU.
             """
 
         if item := self.target_files.currentItem():
@@ -390,7 +387,7 @@ class MainApp(QMainWindow):
             """
 
         # Delay between commands being sent to allow MCU time to process them
-        delay = 0.01
+        delay = 0.02
 
         if editor := self.tab_widget.currentWidget():
 
