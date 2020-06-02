@@ -1,10 +1,12 @@
 # -------------------------------------------------------------------------
 # pythoneditor.py
 #
-# QScintilla  with PyQt
+# QScintilla with PyQt
 #
 # Eli Bendersky (eliben@gmail.com)
 # This code is in the public domain
+#
+# Modified for SynTactic by Steve Baugh (steve@baugh.org.uk)
 # -------------------------------------------------------------------------
 import sys
 import PyQt5
@@ -13,10 +15,10 @@ from PyQt5.QtGui import QFont, QFontMetrics, QColor
 from PyQt5.QtWidgets import QApplication
 from PyQt5.Qsci import QsciScintilla, QsciLexerPython
 
-# FONT_NAME_b = b'Courier New'
-# FONT_NAME = 'Courier New'
-FONT_NAME_b = b'Source Code Pro'
-FONT_NAME = 'Source Code Pro'
+FONT_NAME_b = b'Courier New'
+FONT_NAME = 'Courier New'
+# FONT_NAME_b = b'Source Code Pro'
+# FONT_NAME = 'Source Code Pro'
 FONT_SIZE = 10  # pt
 
 class PythonEditor(QsciScintilla):

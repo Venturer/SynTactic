@@ -24,7 +24,9 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 
-# Version 0.1, May 2020
+# Version Beta 1.1, May 2020
+# Version Beta 1.2, June 2020
+
 
 # standard imports
 from __future__ import annotations
@@ -43,7 +45,8 @@ from PyQt5.QtWidgets import *
 from pythoneditor import PythonEditor
 from terminal import TerminalWidget, serial_ports, hexdump
 
-TITLE = 'SynTactic'
+VERSION = 'Beta 1.2'
+TITLE = f'SynTactic - {VERSION}'
 
 
 class MainApp(QMainWindow):
@@ -53,6 +56,8 @@ class MainApp(QMainWindow):
     captured_text = ''
     ending = ''
     downloaded_filename = ''
+
+    # ToDo: Check if any characters need to be escaped to avoid problems with exec()
 
     def __init__(self, *args, **kwargs):
         super(MainApp, self).__init__(*args, **kwargs)
@@ -276,7 +281,8 @@ class MainApp(QMainWindow):
         """Display the About MessageBox dialogue."""
 
         QMessageBox.about(self, "About SynTactic",
-                          "<p>A <b>Python Editor with Syntax Highlighting</b> for <b>MicroPython</b> by G4AUC.")
+                          "<p>A <b>Python Editor with Syntax Highlighting</b> for <b>MicroPython</b> "
+                          f"</br>by Steve Baugh, G4AUC. </br> </b> Version {VERSION}")
 
     def callback_with_text_from_target(self, callback: Optional(Any) = None, ending: str = '\n'):
         """Sets self.callback and self.ending which are then used by the slot method attached to
@@ -391,9 +397,13 @@ class MainApp(QMainWindow):
 
         if editor := self.tab_widget.currentWidget():
 
-            self.save_file(editor)
             content = editor.text()
             dir, filename = os.path.split(editor.filename)
+
+            if filename.startswith('['):
+                filename = filename[1:-1]
+            else:
+                self.save_file(editor)
 
             cont_lines = content.splitlines(keepends=True)
             for i, c_line in enumerate(cont_lines):
@@ -572,7 +582,7 @@ class MainApp(QMainWindow):
             """
 
         editor = self.tab_widget.currentWidget()
-        self.save_file(editor)
+        self.save_file_as(editor)
 
     @pyqtSlot(int)
     def on_tab_close_request(self, tab_index: int):
@@ -628,7 +638,7 @@ class MainApp(QMainWindow):
         return closed
 
     def save_file_as(self, editor: PythonEditor):
-        """Save file from the `editor."""
+        """Save file from the `editor`."""
 
         if editor:
             if editor.filename == 'untitled.py':
