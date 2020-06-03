@@ -26,6 +26,7 @@
 
 # Version Beta 1.1, May 2020
 # Version Beta 1.2, June 2020
+# Version Beta 1.3, June 2020
 
 
 # standard imports
@@ -45,7 +46,7 @@ from PyQt5.QtWidgets import *
 from pythoneditor import PythonEditor
 from terminal import TerminalWidget, serial_ports, hexdump
 
-VERSION = 'Beta 1.2'
+VERSION = 'Beta 1.3'
 TITLE = f'SynTactic - {VERSION}'
 
 
@@ -281,8 +282,9 @@ class MainApp(QMainWindow):
         """Display the About MessageBox dialogue."""
 
         QMessageBox.about(self, "About SynTactic",
-                          "<p>A <b>Python Editor with Syntax Highlighting</b> for <b>MicroPython</b> "
-                          f"</br>by Steve Baugh, G4AUC. </br> </b> Version {VERSION}")
+                          '<p>A <b style="color:blue">Development Environment</b> for '
+                          '<b style="color:red">MicroPython</b>.'
+                          f"<p>By <b>Steve Baugh, G4AUC.</b><p>Version {VERSION}")
 
     def callback_with_text_from_target(self, callback: Optional(Any) = None, ending: str = '\n'):
         """Sets self.callback and self.ending which are then used by the slot method attached to
@@ -641,19 +643,25 @@ class MainApp(QMainWindow):
         """Save file from the `editor`."""
 
         if editor:
+
             if editor.filename == 'untitled.py':
-                    default = self.settings.value('save_file_dir', './')
+                default = self.settings.value('save_file_dir', './')
+
             elif editor.filename.startswith('['):
-                    default = self.settings.value('save_file_dir', './') + editor.filename
+                directory, default_filename = os.path.split(editor.filename)
+                default_filename = default_filename[1:-1]  # Remove square brackets from around the name
+                default = os.path.join(self.settings.value('save_file_dir', './'), default_filename)
+
             else:
                 default = editor.filename
+
             file_name, _ = QFileDialog.getSaveFileName(self,
-                                                       "Save Source File",
+                                                       "Save Source File As",
                                                        default,
                                                        "Python Files (*.py *.pyw, *.pyi)")
             if file_name:
-                diry, name = os.path.split(file_name)
-                self.settings.setValue('save_file_dir', diry)
+                directory, name = os.path.split(file_name)
+                self.settings.setValue('save_file_dir', directory)
 
                 # Save file
                 with open(file_name, 'w') as outfile:
@@ -663,7 +671,7 @@ class MainApp(QMainWindow):
 
                 # Change the filename tab
                 inx = self.tab_widget.indexOf(self.tab_widget.currentWidget())
-                self.tab_widget.setTabText(inx, editor.filename)
+                self.tab_widget.setTabText(inx, name)
 
                 editor.setModified(False)
 

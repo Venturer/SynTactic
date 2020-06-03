@@ -95,7 +95,7 @@ class TextBox(QTextEdit):
         self.parent().keypress_handler(event)
 
 
-class TerminalWidget(QWidget):
+class TerminalWidget(QTextEdit):
     """Main widget"""
 
     text_update = QtCore.pyqtSignal(str)
@@ -147,7 +147,7 @@ class TerminalWidget(QWidget):
         while s:
             head, sep, s = s.partition("\r\n")  # Split line at LF
             cur.insertText(head)  # Insert text at cursor
-            if sep:  # New line if LF
+            if sep:  # New line
                 cur.insertBlock()
 
         self.textbox.setTextCursor(cur)  # Update visible cursor
