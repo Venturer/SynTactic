@@ -27,6 +27,7 @@
 # Version Beta 1.1, May 2020
 # Version Beta 1.2, June 2020
 # Version Beta 1.3, June 2020
+# Version Beta 1.4 June 2020
 
 
 # standard imports
@@ -37,16 +38,17 @@ import sys
 from typing import *
 from time import sleep
 
+# PyQt interface imports, Qt5
+
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-# PyQt interface imports, Qt5
 from PyQt5.QtWidgets import *
 
 # project imports
 from pythoneditor import PythonEditor
 from terminal import TerminalWidget, serial_ports, hexdump
 
-VERSION = 'Beta 1.3'
+VERSION = 'Beta 1.4'
 TITLE = f'SynTactic - {VERSION}'
 
 
@@ -355,6 +357,7 @@ class MainApp(QMainWindow):
         self.tab_widget.setTabIcon(inx, self.micropython_icon)
 
         editor.append(chr(10).join(lines[1:]))
+        editor.setModified(False)
 
     @pyqtSlot()
     def on_delete_file_button_clicked(self):

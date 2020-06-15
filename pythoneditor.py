@@ -27,7 +27,7 @@ class PythonEditor(QsciScintilla):
     def __init__(self, parent=None):
         super(PythonEditor, self).__init__(parent)
 
-        self.filename = 'TestFiles/untitled.py'
+        self.filename = 'untitled.py'
 
         # self.setIndentationWidth(4)
 
