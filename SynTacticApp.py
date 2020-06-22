@@ -35,6 +35,7 @@
 # Version Beta 1.2, June 2020
 # Version Beta 1.3, June 2020
 # Version Beta 1.4 June 2020
+# Version Beta 1.5 June 2020
 
 
 # standard imports
@@ -44,6 +45,7 @@ import os.path
 import sys
 from typing import *
 from time import sleep
+import subprocess
 
 # PyQt interface imports, Qt5
 
@@ -55,7 +57,7 @@ from PyQt5.QtWidgets import *
 from pythoneditor import PythonEditor
 from terminal import TerminalWidget, serial_ports, hexdump
 
-VERSION = 'Beta 1.4'
+VERSION = 'Beta 1.5'
 TITLE = f'SynTactic - {VERSION}'
 
 
@@ -404,6 +406,32 @@ class MainApp(QMainWindow):
             the target MCU.
             """
 
+        if editor := self.tab_widget.currentWidget():
+
+            content = editor.text()
+            dir, filename = os.path.split(editor.filename)
+
+            if filename.startswith('['):
+                print('Cannot Upload a downloaded file. Save it first.')
+                return
+            else:
+                self.save_file(editor)
+
+            already_connected = self.terminal.is_connected()
+
+            try:
+                self.terminal.close_serial_port_and_wait()
+            except Exception as e:
+                print('Could not disconnect!')
+                print(e)
+
+            subprocess.run(['ampy', '-p', 'COM15', '-b', '115200', 'put', editor.filename])
+
+            if already_connected:
+                self.on_port_connect_button_clicked()
+
+
+    def old_upload(self):
         # Delay between commands being sent to allow MCU time to process them
         delay = 0.03
 
