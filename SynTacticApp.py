@@ -36,6 +36,7 @@
 # Version Beta 1.3, June 2020
 # Version Beta 1.4 June 2020
 # Version Beta 1.5 June 2020
+# Version Beta 1.6 July 2020
 
 
 # standard imports
@@ -54,13 +55,13 @@ from PyQt5.QtWidgets import *
 
 # project imports
 from pythoneditor import PythonEditor
-from terminal import TerminalWidget, serial_ports, hexdump, serial_port
+from terminal import TerminalWidget, serial_ports
 
 import ampy.pyboard
 from ampy.pyboard import PyboardError
 import ampy.files
 
-VERSION = 'Beta 1.5'
+VERSION = 'Beta 1.6'
 TITLE = f'SynTactic - {VERSION}'
 
 
@@ -338,15 +339,67 @@ class MainApp(QMainWindow):
 
             The MCU file selected is downloaded into an editor page.
             """
+
         if item:
-            self.callback_with_text_from_target(self.target_files_itemDoubleClicked_callback,
-                                                ending='&end')
-            self.downloaded_filename = item.text()
 
-            send_command = f"exec(\"with open('./{item.text()}','r') as f:" \
-                           f" [print(l) for l in f.read().splitlines()]; print(' &''end')\", globals())"
+            already_connected = self.terminal.is_connected()
 
-            self.terminal.send_text(f"{send_command}\r")
+            if already_connected and self.port_combo.count():  # Make sure there is at least one port name
+
+                print('Preparing to Download...')
+                app.processEvents()
+                downloaded_filename = item.text()
+
+                self.terminal.close_serial_port_and_wait()
+
+                sleep(1.0)
+
+                try:
+                    port = self.port_combo.currentText()
+                    self.board = ampy.pyboard.Pyboard(port)
+                    self.ampy = ampy.files.Files(self.board)
+
+                    print('Downloading...')
+                    app.processEvents()
+
+                    downloaded_text: bytes = self.ampy.get(f'./{item.text()}')
+
+                    # Create a new editor page
+                    editor = self.on_new_clicked()
+                    editor.filename = f"[{downloaded_filename}]"
+
+                    # Make the filename tab and icon distinct from PC files being edited.
+                    inx = self.tab_widget.indexOf(self.tab_widget.currentWidget())
+                    self.tab_widget.setTabText(inx, editor.filename)
+                    self.tab_widget.setTabIcon(inx, self.micropython_icon)
+
+                    editor.append(downloaded_text.decode('utf-8'))
+                    editor.setModified(False)
+
+                    self.board.close()
+
+                    print('Downloaded.')
+                    app.processEvents()
+
+                except PyboardError as e:
+                    print(e)
+                    app.processEvents()
+
+                sleep(1.0)
+
+                try:
+                    port = self.port_combo.currentText()
+                    self.settings.setValue('com_port', port)
+                    self.terminal.connect(port, 115200)
+                    self.terminal.send_text('\r')
+
+                    sleep(1.0)
+                    app.processEvents()
+                    self.on_get_target_files_button_clicked()
+
+                except Exception as e:
+                    print('Could not connect to: ', port, '!', sep='')
+                    print(e)
 
     def target_files_itemDoubleClicked_callback(self, text: str):
         """Method called back when the requested text capture from the terminal is available.
@@ -467,6 +520,7 @@ class MainApp(QMainWindow):
                     self.ampy.put(filename, content.encode('utf-8'))
                     print('Uploading...')
                     app.processEvents()
+
                     self.board.close()
                 except PyboardError as e:
                     print(e)
@@ -676,10 +730,10 @@ class MainApp(QMainWindow):
                                          QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
             if reply == QMessageBox.Yes:
                 if editor.filename == 'untitled.py':
-                    default = self.settings.value('save_file_dir', './')
+                    default = self.settings.value('open_file_dir', './')
 
                 elif editor.filename.startswith('['):
-                    default = self.settings.value('save_file_dir', './') + editor.filename
+                    default = self.settings.value('open_file_dir', './') + editor.filename
                 else:
                     default = editor.filename
                 file_name, _ = QFileDialog.getSaveFileName(self,
@@ -688,7 +742,7 @@ class MainApp(QMainWindow):
                                                            "Python Files (*.py *.pyw, *.pyi)")
                 if file_name:
                     diry, name = os.path.split(file_name)
-                    self.settings.setValue('save_file_dir', diry)
+                    self.settings.setValue('open_file_dir', diry)
                     editor.filename = file_name
                     self.save_file(editor)
                     editor.close()
@@ -713,12 +767,12 @@ class MainApp(QMainWindow):
         if editor:
 
             if editor.filename == 'untitled.py':
-                default = self.settings.value('save_file_dir', './')
+                default = self.settings.value('open_file_dir', './')
 
             elif editor.filename.startswith('['):
                 directory, default_filename = os.path.split(editor.filename)
                 default_filename = default_filename[1:-1]  # Remove square brackets from around the name
-                default = os.path.join(self.settings.value('save_file_dir', './'), default_filename)
+                default = os.path.join(self.settings.value('open_file_dir', './'), default_filename)
 
             else:
                 default = editor.filename
@@ -729,7 +783,7 @@ class MainApp(QMainWindow):
                                                        "Python Files (*.py *.pyw, *.pyi)")
             if file_name:
                 directory, name = os.path.split(file_name)
-                self.settings.setValue('save_file_dir', directory)
+                self.settings.setValue('open_file_dir', directory)
 
                 # Save file
                 with open(file_name, 'w') as outfile:

@@ -24,7 +24,7 @@ portname = "COM15"                  # Default port name
 hexmode = False                     # Flag to enable hex display
 captured_text = ''
 
-serial_port = None
+#serial_port = None
 
 
 def serial_ports():
@@ -225,13 +225,10 @@ class SerialThread(QtCore.QThread):
     def run(self):
         """Run serial reader thread."""
 
-        global serial_port
-
         print("Opening %s at %u baud %s" % (self.portname, self.baudrate,
                                             "(hex display)" if hexmode else ""))
         try:
             self.ser = serial.Serial(self.portname, self.baudrate, timeout=SER_TIMEOUT)
-            serial_port = self.ser
 
             time.sleep(SER_TIMEOUT * 1.2)
             self.ser.flushInput()
