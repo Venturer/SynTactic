@@ -85,6 +85,7 @@ class PythonEditor(QsciScintilla):
         # Current line visible with special background color
         self.setCaretLineVisible(True)
         self.setCaretLineBackgroundColor(QColor("#ffe4e4"))
+        self.setCaretWidth(3)
 
         # Set Python lexer
         lexer = QsciLexerPython()
@@ -98,7 +99,7 @@ class PythonEditor(QsciScintilla):
         # Don't want to see the horizontal scrollbar at all?
         # Use raw message to Scintilla here (all messages are documented
         # here: http://www.scintilla.org/ScintillaDoc.html)
-        self.SendScintilla(QsciScintilla.SCI_SETHSCROLLBAR, 1)
+        # self.SendScintilla(QsciScintilla.SCI_SETHSCROLLBAR, 1)
 
         """
         Customization - AUTOCOMPLETION
@@ -113,7 +114,7 @@ class PythonEditor(QsciScintilla):
         # document
         self.setAutoCompletionSource(PyQt5.Qsci.QsciScintilla.AcsDocument)
 
-        # Set the autocompletion dialog to appear as soon as 1 character is typed
+        # Set the autocompletion dialog to appear as soon as 2 characters are typed
         self.setAutoCompletionThreshold(2)
 
         # not too small

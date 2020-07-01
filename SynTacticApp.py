@@ -45,7 +45,6 @@ import os.path
 import sys
 from typing import *
 from time import sleep
-import subprocess
 
 # PyQt interface imports, Qt5
 
@@ -55,7 +54,11 @@ from PyQt5.QtWidgets import *
 
 # project imports
 from pythoneditor import PythonEditor
-from terminal import TerminalWidget, serial_ports, hexdump
+from terminal import TerminalWidget, serial_ports, hexdump, serial_port
+
+import ampy.pyboard
+from ampy.pyboard import PyboardError
+import ampy.files
 
 VERSION = 'Beta 1.5'
 TITLE = f'SynTactic - {VERSION}'
@@ -68,8 +71,6 @@ class MainApp(QMainWindow):
     captured_text = ''
     ending = ''
     downloaded_filename = ''
-
-    # ToDo: Check if any characters need to be escaped to avoid problems with exec()
 
     def __init__(self, *args, **kwargs):
         super(MainApp, self).__init__(*args, **kwargs)
@@ -233,6 +234,10 @@ class MainApp(QMainWindow):
         upload_button.clicked.connect(self.on_upload_button_clicked)
         top_button_layout.addWidget(upload_button)
 
+        test_button = QPushButton("Test")
+        test_button.clicked.connect(self.on_test_button_clicked)
+        top_button_layout.addWidget(test_button)
+
         top_button_layout.addStretch()
 
         exit_button = QPushButton(exit_icon, "Exit")
@@ -386,6 +391,30 @@ class MainApp(QMainWindow):
                 self.terminal.send_text(send_command)
 
     @pyqtSlot()
+    def on_test_button_clicked(self):
+        """Slot triggered when button clicked.
+
+            Run a file that has been uploaded to the target MCU.
+            """
+
+        if self.port_combo.count():  # Make sure there is at least one port name
+
+            self.terminal.close_serial_port_and_wait()
+
+            try:
+                port = self.port_combo.currentText()
+
+                self.board = ampy.pyboard.Pyboard(port)
+                self.ampy = ampy.files.Files(self.board)
+
+                print(self.ampy.ls())
+                print(self.ampy.get('wpm.py').decode('latin-1'))
+            except PyboardError as e:
+                print(e)
+
+
+
+    @pyqtSlot()
     def on_run_target_button_clicked(self):
         """Slot triggered when button clicked.
 
@@ -419,47 +448,45 @@ class MainApp(QMainWindow):
 
             already_connected = self.terminal.is_connected()
 
-            try:
+            if already_connected and self.port_combo.count():  # Make sure there is at least one port name
+
+                print('Preparing to Upload...')
+                app.processEvents()
+
                 self.terminal.close_serial_port_and_wait()
-            except Exception as e:
-                print('Could not disconnect!')
-                print(e)
 
-            subprocess.run(['ampy', '-p', 'COM15', '-b', '115200', 'put', editor.filename])
+                sleep(1.0)
 
-            if already_connected:
-                self.on_port_connect_button_clicked()
+                try:
+                    port = self.port_combo.currentText()
+                    self.board = ampy.pyboard.Pyboard(port)
+                    self.ampy = ampy.files.Files(self.board)
 
+                    sleep(1.0)
 
-    def old_upload(self):
-        # Delay between commands being sent to allow MCU time to process them
-        delay = 0.03
+                    self.ampy.put(filename, content.encode('utf-8'))
+                    print('Uploading...')
+                    app.processEvents()
+                    self.board.close()
+                except PyboardError as e:
+                    print(e)
+                    app.processEvents()
 
-        if editor := self.tab_widget.currentWidget():
+                sleep(1.0)
 
-            content = editor.text()
-            dir, filename = os.path.split(editor.filename)
+                try:
+                    port = self.port_combo.currentText()
+                    self.settings.setValue('com_port', port)
+                    self.terminal.connect(port, 115200)
+                    self.terminal.send_text('\r')
 
-            if filename.startswith('['):
-                filename = filename[1:-1]
-            else:
-                self.save_file(editor)
+                    sleep(1.0)
+                    app.processEvents()
+                    self.on_get_target_files_button_clicked()
 
-            cont_lines = content.splitlines(keepends=True)
-            for i, c_line in enumerate(cont_lines):
-                if i==0:
-                    send_command = f"__c_ =  '''{c_line}'''\r\n"
-                    self.terminal.send_text(f"\x05{send_command}\x04")
-                    sleep(delay)
-                else:
-                    send_command = f"__c_ +=  '''{c_line}'''\r\n"
-                    self.terminal.send_text(f"\x05{send_command}\x04")
-                    sleep(delay)
-
-            send_command = f"exec(\"with open('./{filename}', 'w') as f: " \
-                           f"[f.write(c) for c in __c_.splitlines(keepends=True)]\", globals())\r"
-            self.terminal.send_text(f"\x05{send_command}\x04")
-            sleep(delay)
+                except Exception as e:
+                    print('Could not connect to: ', port, '!', sep='')
+                    print(e)
 
     @pyqtSlot()
     def on_get_target_files_button_clicked(self):
@@ -524,6 +551,7 @@ class MainApp(QMainWindow):
                 self.settings.setValue('com_port', port)
                 self.terminal.connect(port, 115200)
                 self.terminal.send_text('\r')
+
             except Exception as e:
                 print('Could not connect to: ', port, '!', sep='')
                 print(e)
@@ -587,7 +615,9 @@ class MainApp(QMainWindow):
 
         dir = self.settings.value('open_file_dir', '.')
         filename, _ = QFileDialog.getOpenFileName(self,
-                                                  "Open File", dir, "Python Files (*.py *.pyw *.pyi )")
+                                                  "Open File",
+                                                  dir,
+                                                  "Python Files (*.py *.pyw *.pyi )")
 
         if filename:
             editor = PythonEditor()
