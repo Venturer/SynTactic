@@ -64,6 +64,8 @@ import ampy.files
 VERSION = 'Beta 1.6'
 TITLE = f'SynTactic - {VERSION}'
 
+COMMAND_DELAY = 1.0
+
 
 class MainApp(QMainWindow):
     """Main Qt5 Window."""
@@ -352,7 +354,7 @@ class MainApp(QMainWindow):
 
                 self.terminal.close_serial_port_and_wait()
 
-                sleep(1.0)
+                sleep(COMMAND_DELAY)
 
                 try:
                     port = self.port_combo.currentText()
@@ -378,14 +380,14 @@ class MainApp(QMainWindow):
 
                     self.board.close()
 
-                    print('Downloaded.')
+                    print('Downloaded. Reopening COM port...')
                     app.processEvents()
 
                 except PyboardError as e:
                     print(e)
                     app.processEvents()
 
-                sleep(1.0)
+                sleep(COMMAND_DELAY)
 
                 try:
                     port = self.port_combo.currentText()
@@ -393,7 +395,7 @@ class MainApp(QMainWindow):
                     self.terminal.connect(port, 115200)
                     self.terminal.send_text('\r')
 
-                    sleep(1.0)
+                    sleep(COMMAND_DELAY)
                     app.processEvents()
                     self.on_get_target_files_button_clicked()
 
@@ -508,25 +510,30 @@ class MainApp(QMainWindow):
 
                 self.terminal.close_serial_port_and_wait()
 
-                sleep(1.0)
+                sleep(COMMAND_DELAY)
 
                 try:
                     port = self.port_combo.currentText()
                     self.board = ampy.pyboard.Pyboard(port)
                     self.ampy = ampy.files.Files(self.board)
 
-                    sleep(1.0)
-
-                    self.ampy.put(filename, content.encode('utf-8'))
                     print('Uploading...')
                     app.processEvents()
 
+                    sleep(COMMAND_DELAY)
+
+                    self.ampy.put(filename, content.encode('utf-8'))
+
                     self.board.close()
+
+                    print('Uploaded. Reopening COM port...')
+                    app.processEvents()
+
                 except PyboardError as e:
                     print(e)
                     app.processEvents()
 
-                sleep(1.0)
+                sleep(COMMAND_DELAY)
 
                 try:
                     port = self.port_combo.currentText()
@@ -534,7 +541,7 @@ class MainApp(QMainWindow):
                     self.terminal.connect(port, 115200)
                     self.terminal.send_text('\r')
 
-                    sleep(1.0)
+                    sleep(COMMAND_DELAY)
                     app.processEvents()
                     self.on_get_target_files_button_clicked()
 
@@ -551,8 +558,63 @@ class MainApp(QMainWindow):
             """
 
         if self.terminal.is_connected():
-            self.callback_with_text_from_target(self.get_target_files_callback, ending='>>> ')
-            self.terminal.send_text('import os; os.listdir()\r')
+            # self.callback_with_text_from_target(self.get_target_files_callback, ending='>>> ')
+            # self.terminal.send_text('import os; os.listdir()\r')
+
+            already_connected = self.terminal.is_connected()
+
+            if already_connected and self.port_combo.count():  # Make sure there is at least one port name
+                target_files = []
+                port = ''
+
+                print('Preparing to list files...')
+                app.processEvents()
+
+                self.terminal.close_serial_port_and_wait()
+
+                sleep(COMMAND_DELAY)
+
+                try:
+                    port = self.port_combo.currentText()
+                    self.board = ampy.pyboard.Pyboard(port)
+                    self.ampy = ampy.files.Files(self.board)
+
+                    print('Getting file list...')
+                    app.processEvents()
+
+                    downloaded = self.ampy.ls()
+                    self.board.close()
+
+                    for f in downloaded:
+                        filename = f.split('-')[0].strip('/ ')
+                        target_files.append(filename)
+                        print(f)
+                        app.processEvents()
+
+                    print('Reopening COM port...')
+                    app.processEvents()
+
+                except PyboardError as e:
+                    print(e)
+                    app.processEvents()
+
+                sleep(COMMAND_DELAY)
+
+                try:
+                    port = self.port_combo.currentText()
+                    self.settings.setValue('com_port', port)
+                    self.terminal.connect(port, 115200)
+                    self.terminal.send_text('\r')
+
+                    self.target_files.clear()
+                    self.target_files.addItems(target_files)
+
+                    sleep(COMMAND_DELAY)
+                    app.processEvents()
+
+                except Exception as e:
+                    print('Could not connect to: ', port, '!', sep='')
+                    print(e)
         else:
             print('Disconnected!')
 
