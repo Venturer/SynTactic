@@ -147,9 +147,9 @@ class TerminalWidget(QTextEdit):
 
         s = str(text)
         while s:
-            head, sep, s = s.partition("\r\n")  # Split line at LF
+            head, sep, s = s.partition("\r\n")  # Split text at LF
             cur.insertText(head)  # Insert text at cursor
-            if sep:  # New line
+            if sep:  # New text
                 cur.insertBlock()
 
         self.textbox.setTextCursor(cur)  # Update visible cursor
@@ -257,7 +257,7 @@ class SerialThread(QtCore.QThread):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     opt = err = None
-    for arg in sys.argv[1:]:  # Process command-line options
+    for arg in sys.argv[1:]:  # Process command-text options
         if len(arg) == 2 and arg[0] == "-":
             opt = arg.lower()
             if opt == '-x':  # -X: display incoming data in hex

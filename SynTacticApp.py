@@ -44,27 +44,28 @@ from __future__ import annotations
 
 import os.path
 import sys
-from typing import *
 from time import sleep
+from typing import *
 
-# PyQt interface imports, Qt5
+import ampy.files
+import ampy.pyboard
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
+from ampy.pyboard import PyboardError
 
 # project imports
 from pythoneditor import PythonEditor
 from terminal import TerminalWidget, serial_ports
+from synboard import print_via_browser
 
-import ampy.pyboard
-from ampy.pyboard import PyboardError
-import ampy.files
+# PyQt interface imports, Qt5
 
 VERSION = 'Beta 1.6'
 TITLE = f'SynTactic - {VERSION}'
 
-COMMAND_DELAY = 1.0
+COMMAND_DELAY = 0.7  # 1.0
 
 
 class MainApp(QMainWindow):
@@ -237,9 +238,9 @@ class MainApp(QMainWindow):
         upload_button.clicked.connect(self.on_upload_button_clicked)
         top_button_layout.addWidget(upload_button)
 
-        test_button = QPushButton("Test")
-        test_button.clicked.connect(self.on_test_button_clicked)
-        top_button_layout.addWidget(test_button)
+        # test_button = QPushButton("Test")
+        # test_button.clicked.connect(self.on_test_button_clicked)
+        # top_button_layout.addWidget(test_button)
 
         top_button_layout.addStretch()
 
@@ -274,6 +275,7 @@ class MainApp(QMainWindow):
 
         # Menus
         self.setup_file_menu()
+        self.setup_target_menu()
         self.setup_help_menu()
 
     def setup_file_menu(self):
@@ -286,7 +288,22 @@ class MainApp(QMainWindow):
         file_menu.addAction("&Open...", self.on_open_clicked, "Ctrl+O")
         file_menu.addAction("&Save...", self.on_save_clicked, "Ctrl+S")
         file_menu.addAction("Sa&veAs...", self.on_save_as_clicked, "Ctrl+Shift+S")
+        file_menu.addAction("&Print...", self.on_print_clicked, "Ctrl+P")
         file_menu.addAction("E&xit", self.close, "Ctrl+Q")
+
+    def setup_target_menu(self):
+        """Create the file menu."""
+
+        file_menu = QMenu("&Target", self)
+        self.menuBar().addMenu(file_menu)
+
+        file_menu.addAction("&Connect", self.on_port_connect_button_clicked, "Ctrl+Shift+N")
+        file_menu.addAction("&Disconnect", self.on_port_disconnect_button_clicked, "Ctrl+Shift+D")
+        file_menu.addAction("&List Files", self.on_get_target_files_button_clicked, "Ctrl+Shift+L")
+        file_menu.addAction("&Run File", self.on_run_target_button_clicked, "Ctrl+Shift+R")
+
+        # file_menu.addAction("Downl&oad", None, "Ctrl+Shift+O")
+        file_menu.addAction("Dele&te", self.on_delete_file_button_clicked, "Ctrl+Shift+T")
 
     def setup_help_menu(self):
         """Create the help menu."""
@@ -307,7 +324,7 @@ class MainApp(QMainWindow):
 
     def callback_with_text_from_target(self, callback: Optional(Any) = None, ending: str = '\n'):
         """Sets self.callback and self.ending which are then used by the slot method attached to
-            the signal which emits the line text. The current captured text is cleared.
+            the signal which emits the text text. The current captured text is cleared.
 
             That method sends the text on to the callback method/function when available.
             """
@@ -334,6 +351,17 @@ class MainApp(QMainWindow):
                 # callback should probably do this as well to avoid being
                 # potentially called again due to threading
                 self.callback = None
+
+    @pyqtSlot()
+    def on_print_clicked(self):
+
+        if editor := self.tab_widget.currentWidget():
+
+            filename = editor.filename
+            content : str = editor.text()
+
+            if not filename.startswith('['):
+                print_via_browser(content, filename)
 
     @pyqtSlot(QListWidgetItem)
     def on_target_files_itemDoubleClicked(self, item: QListWidgetItem):
@@ -394,10 +422,8 @@ class MainApp(QMainWindow):
                     self.settings.setValue('com_port', port)
                     self.terminal.connect(port, 115200)
                     self.terminal.send_text('\r')
-
-                    sleep(COMMAND_DELAY)
-                    app.processEvents()
-                    self.on_get_target_files_button_clicked()
+                    # app.processEvents()
+                    # sleep(COMMAND_DELAY)
 
                 except Exception as e:
                     print('Could not connect to: ', port, '!', sep='')
@@ -466,8 +492,6 @@ class MainApp(QMainWindow):
                 print(self.ampy.get('wpm.py').decode('latin-1'))
             except PyboardError as e:
                 print(e)
-
-
 
     @pyqtSlot()
     def on_run_target_button_clicked(self):
@@ -629,7 +653,7 @@ class MainApp(QMainWindow):
         self.callback = None
 
         text_lines = text.splitlines()  # split into lines
-        files_line = text_lines[1]  # the files list is on this line
+        files_line = text_lines[1]  # the files list is on this text
 
         # Convert text in files_line to a list of file names
         target_files: List[str] = [f.strip("[]'") for f in files_line.split("', '")]
@@ -681,6 +705,7 @@ class MainApp(QMainWindow):
 
         try:
             self.terminal.close_serial_port_and_wait()
+            print('Disconnected!')
         except Exception as e:
             print('Could not disconnect!')
             print(e)
@@ -884,9 +909,9 @@ class MainApp(QMainWindow):
             if any of the editor pages does not close.
             """
         result = QMessageBox.question(self,
-                                    "Confirm Exit...",
-                                    "Are you sure you want to exit ?",
-                                    QMessageBox.Yes | QMessageBox.No)
+                                      "Confirm Exit...",
+                                      "Are you sure you want to exit ?",
+                                      QMessageBox.Yes | QMessageBox.No)
 
         if result == QMessageBox.Yes:
             all_closed = True
@@ -930,6 +955,7 @@ class MainApp(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    # app.setStyle(QStyleFactory.create('Fusion'))
     mainWindow = MainApp()
     mainWindow.show()
     sys.exit(app.exec_())

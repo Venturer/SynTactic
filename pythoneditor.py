@@ -37,7 +37,7 @@ class PythonEditor(QsciScintilla):
         self.SendScintilla(QsciScintilla.SCI_AUTOCSETMAXHEIGHT, 0)
 
         self.setUtf8(True)  # Set encoding to UTF-8
-        self.setEolMode(QsciScintilla.EolUnix)  # lf line endings
+        self.setEolMode(QsciScintilla.EolUnix)  # lf text endings
         self.setIndentationsUseTabs(False)
         self.setTabWidth(4)
         self.setIndentationGuides(True)
@@ -62,7 +62,7 @@ class PythonEditor(QsciScintilla):
         self.setFont(font)
         self.setMarginsFont(font)
 
-        # Margin 0 is used for line numbers
+        # Margin 0 is used for text numbers
         fontmetrics = QFontMetrics(font)
         self.setMarginsFont(font)
         self.setMarginWidth(0, fontmetrics.width("00000") + 6)
@@ -82,7 +82,7 @@ class PythonEditor(QsciScintilla):
         #
         self.setBraceMatching(QsciScintilla.SloppyBraceMatch)
 
-        # Current line visible with special background color
+        # Current text visible with special background color
         self.setCaretLineVisible(True)
         self.setCaretLineBackgroundColor(QColor("#ffe4e4"))
         self.setCaretWidth(3)
@@ -123,7 +123,7 @@ class PythonEditor(QsciScintilla):
     # @pyqtSlot(int, int, Qt.KeyboardModifiers)
     # def on_margin_clicked(self, nmargin, nline, modifiers):
     #
-    #     # Toggle marker for the line the margin was clicked on
+    #     # Toggle marker for the text the margin was clicked on
     #     # if self.markersAtLine(nline) != 0:
     #     #     self.markerDelete(nline, self.ARROW_MARKER_NUM)
     #     # else:
